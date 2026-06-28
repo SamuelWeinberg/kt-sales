@@ -403,6 +403,7 @@ select:focus{outline:none;border-color:var(--blue);}
       <div style="font-size:36px">👋</div>
     </div>
     <div class="metrics-grid" id="metrics-grid"><div class="loading"><div class="spinner"></div> טוען...</div></div>
+    <div id="debug-info" style="padding:6px 10px;margin-bottom:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;"></div>
       <div class="sc">
         <div class="sc-header"><h3 id="dt-title">📅 השוואה יומית</h3><span id="dt-sub"></span></div>
         <div style="overflow-x:auto"><table id="day-table"><tr><td class="loading"><div class="spinner"></div></td></tr></table></div>
@@ -637,7 +638,7 @@ function pctBadge(v){
 function dateMinus(date,days){ const d=new Date(date); d.setDate(d.getDate()-days); return d.toISOString().split('T')[0]; }
 function fmtD(d){ if(!d)return''; const[y,m,dd]=d.split('-'); return`${dd}/${m}`; }
 function lastDate(){ const dates=[...new Set(salesData.map(r=>r.date))].sort(); return dates[dates.length-1]||new Date().toISOString().split('T')[0]; }
-function visibleBranches(){ return currentProfile?.role==='branch_manager'?[currentProfile.branch]:BRANCHES; }
+function visibleBranches(){ return currentProfile?.role==='branch_manager'?[(currentProfile.branch||'').trim()]:BRANCHES; }
 function canSeeAll(){ return['super_admin','network_manager'].includes(currentProfile?.role); }
 
 function getByDate(date){
@@ -753,13 +754,15 @@ async function initApp(user){
 async function loadSalesData(){
   let all=[], page=0, size=1000;
   while(true){
-    const {data}=await sb.from('sales').select('*').order('date').range(page*size,(page+1)*size-1);
+    const {data,error}=await sb.from('sales').select('*').order('date').range(page*size,(page+1)*size-1);
+    if(error){ console.error('❌ loadSalesData error:', error); break; }
     if(!data||!data.length) break;
     all=[...all,...data];
     if(data.length<size) break;
     page++;
   }
-  salesData=all;
+  salesData=all.map(r=>({...r, branch: (r.branch||'').trim()}));
+  console.log(`✅ נטענו ${salesData.length} שורות. סניפים:`, [...new Set(salesData.map(r=>r.branch))]);
 }
 
 // ─── SETUP ────────────────────────────────────────────────────────────────────
@@ -818,6 +821,12 @@ function buildDashboard(){
       <div class="mc-value">${m.value}</div>
       ${m.change!==null?`<span class="mc-change ${m.change>=0?'up':'down'}">${m.change>=0?'▲':'▼'} ${Math.abs(m.change).toFixed(0)}%</span>`:`<span class="mc-change flat">מול ${fmtD(prev)}</span>`}
     </div>`).join('');
+
+  // Debug info — remove after diagnosis
+  const dbKeys=Object.keys(d2).join(', ')||'—';
+  const dbVb=vb.join(', ')||'—';
+  const dbEl=document.getElementById('debug-info');
+  if(dbEl) dbEl.innerHTML=`<span style="font-size:11px;color:#8FA3B8">🔍 תפקיד: <b>${currentProfile?.role||'?'}</b> | סניף בפרופיל: "<b>${currentProfile?.branch||'?'}</b>" | שורות: <b>${salesData.length}</b> | סניפים בנתונים: <b>${dbKeys}</b></span>`;
 
   document.getElementById('dt-title').textContent=`📅 ${fmtD(ld)} מול ${fmtD(prev)}`;
   buildCmpTable('day-table',d1,d2,fmtD(prev),fmtD(ld));
